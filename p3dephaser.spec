@@ -2,7 +2,7 @@
 
 block_cipher = None
 
-a = Analysis(['p3dephaser/Launcher.py'],
+a = Analysis(['main.py'],
              pathex=[],
              binaries=[],
              datas=[],
