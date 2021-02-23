@@ -1,6 +1,6 @@
-from PySide2.QtCore import Qt, QThreadPool
-from PySide2.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QListWidget, QMessageBox, QLineEdit, QTableWidget, QTableWidgetItem, QHeaderView
-from PySide2.QtGui import QIcon
+from PyQt5.QtCore import Qt, QThreadPool
+from PyQt5.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QListWidget, QMessageBox, QLineEdit, QTableWidget, QTableWidgetItem, QHeaderView
+from PyQt5.QtGui import QIcon
 from .ScanWorker import ScanWorker
 import psutil, threading
 

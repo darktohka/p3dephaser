@@ -1,4 +1,4 @@
-from PySide2.QtCore import QObject, Signal, QRunnable
+from PyQt5.QtCore import QObject, QRunnable, pyqtSignal
 from mem_edit import Process
 import ctypes, struct, string, traceback, sys
 
@@ -11,9 +11,9 @@ VERSION_OFFSET = 1336 # Between password and version
 PRINTABLE_CHARS = string.printable.encode('utf-8')[:-5]
 
 class ScanWorkerSignals(QObject):
-    finished = Signal()
-    progress = Signal(str, str)
-    error = Signal(tuple)
+    finished = pyqtSignal()
+    progress = pyqtSignal(str, str)
+    error = pyqtSignal(tuple)
 
 class ScanWorker(QRunnable):
 

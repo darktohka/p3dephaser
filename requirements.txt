@@ -1,3 +1,3 @@
-PySide2
-mem_edit
+PyQt5
 psutil
+git+git://github.com/darktohka/mem_edit.git
