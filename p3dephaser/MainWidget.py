@@ -13,7 +13,7 @@ class MainWidget(QWidget):
 
         self.base = base
 
-        self.setWindowIcon(QIcon('icon.png'))
+        self.setWindowIcon(QIcon('icon.ico'))
         self.setWindowTitle(TITLE)
         self.setBackgroundColor(Qt.white)
 

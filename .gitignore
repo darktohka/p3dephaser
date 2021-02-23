@@ -1,2 +1,4 @@
 *.py[c|o]
 __pycache__
+dist
+build
