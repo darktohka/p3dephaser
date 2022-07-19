@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication
 from .MainWidget import MainWidget
 import sys
 
@@ -11,4 +11,4 @@ class Dephaser(object):
         self.main = MainWidget(self)
         self.main.resize(1200, 400)
         self.main.show()
-        self.app.exec_()
+        self.app.exec()

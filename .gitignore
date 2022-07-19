@@ -3,6 +3,10 @@ __pycache__
 dist
 build
 
+*.onefile-build
+*.build
+*.dist
+
 *.exe
 *.dll
 *.zip

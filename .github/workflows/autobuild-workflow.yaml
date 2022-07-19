@@ -1,8 +1,6 @@
-name: Autobuild
+name: Build
 
-on:
-  push:
-    branches: master
+on: [push, repository_dispatch, workflow_dispatch]
 
 jobs:
   build:
@@ -20,13 +18,13 @@ jobs:
       - name: Install Python requirements
         shell: bash
         run: >
-          python -m pip install pyinstaller &&
-          python -m pip install -r requirements.txt
+          python -OO -m pip install --disable-pip-version-check --upgrade nuitka nuitka zstandard &&
+            python -OO -m pip install --disable-pip-version-check -r requirements.txt
       - name: Build executable
         shell: powershell
         run: >
-          pyinstaller --icon=icon.ico --onefile p3dephaser.spec
-      - uses: actions/upload-artifact@v2
+          python -OO -m nuitka --standalone --onefile --python-flag=-OO --assume-yes-for-downloads --static-libpython=auto --windows-disable-console --windows-icon-from-ico=icon.ico --windows-product-name=P3Dephaser --windows-company-name=darktohka --windows-file-version=1.1.0.0 --windows-file-description=P3Dephaser --enable-plugin=pyside6 -o P3Dephaser.exe main.py
+      - uses: actions/upload-artifact@v3
         with:
           name: P3Dephaser
-          path: dist/P3Dephaser.exe
+          path: P3Dephaser.exe
