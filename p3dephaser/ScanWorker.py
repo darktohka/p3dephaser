@@ -60,7 +60,7 @@ class ScanWorker(QRunnable):
         values = []
 
         for address in addresses:
-            if self.base.stopEvent.is_set():
+            if self.base.stop_event.is_set():
                 continue
 
             address += offset
@@ -128,20 +128,20 @@ class ScanWorker(QRunnable):
     def search_memory(self):
         with Process.open_process(self.pid) as process:
             for multifile_name in self.multifiles:
-                if self.base.stopEvent.is_set():
+                if self.base.stop_event.is_set():
                     return
 
                 multifiles = self.find_string(process, multifile_name)
 
                 for multifile in multifiles:
-                    if self.base.stopEvent.is_set():
+                    if self.base.stop_event.is_set():
                         return
 
                     target, passwords = self.find_passwords(process, multifile, multifile_name)
                     target = target.decode('utf-8', 'backslashreplace')
 
                     for password in passwords:
-                        if self.base.stopEvent.is_set():
+                        if self.base.stop_event.is_set():
                             return
 
                         self.signals.progress.emit(target, password.decode('utf-8', 'backslashreplace'))
