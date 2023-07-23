@@ -23,7 +23,7 @@ jobs:
       - name: Build executable
         shell: powershell
         run: >
-          python -OO -m nuitka --standalone --onefile --python-flag=-OO --assume-yes-for-downloads --static-libpython=auto --windows-disable-console --windows-icon-from-ico=icon.ico --windows-product-name=P3Dephaser --windows-company-name=darktohka --windows-file-version=1.1.0.0 --windows-file-description=P3Dephaser --enable-plugin=pyside6 -o P3Dephaser.exe main.py
+          python -OO -m nuitka --standalone --onefile --python-flag=-OO --assume-yes-for-downloads --static-libpython=auto --windows-disable-console --windows-icon-from-ico=icon.ico --windows-product-name=P3Dephaser --windows-company-name=darktohka --windows-file-version=1.2.0.0 --windows-file-description=P3Dephaser --enable-plugin=pyside6 -o P3Dephaser.exe main.py
       - uses: actions/upload-artifact@v3
         with:
           name: P3Dephaser

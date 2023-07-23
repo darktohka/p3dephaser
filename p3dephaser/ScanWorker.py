@@ -1,19 +1,27 @@
 from PySide6.QtCore import QObject, QRunnable, Signal
+from .Multifile import Multifile, NotEncryptedException, UnimplementedEncryptionException
+from .StructDatagram import StructDatagramException
 from mem_edit import Process
 import ctypes, struct, string, traceback, sys
+import io, os
 
 POINTER = '<Q'
-POINTER_SIZE = 8
-FILENAME_OFFSET = -1216 # Between filename and password
-TIMESTAMP_OFFSET = 40 # Between timestamp and password
-VERSION_OFFSET = 1336 # Between password and version
+
+MULTIFILE_STRUCT_SIZE = 1800 # The maximum size of the multifile struct
+SIZEOF_STRING = 24 # The size of an std::string
 
 PRINTABLE_CHARS = string.printable.encode('utf-8')[:-5]
 
 class ScanWorkerSignals(QObject):
     finished = Signal()
-    progress = Signal(str, str)
+    warning = Signal(str)
+    progress = Signal(str, bytes)
     error = Signal(tuple)
+
+STRING_IMPLEMENTATIONS = [
+    [(16, 24), (0, 8), 16, False], # MSVC
+    [(8, 16), (16, 24), 23, True]  # libc++
+]
 
 class ScanWorker(QRunnable):
 
@@ -22,6 +30,7 @@ class ScanWorker(QRunnable):
         self.base = base
         self.pid = pid
         self.multifiles = multifiles
+        self.multifile_names = [os.path.basename(f) for f in self.multifiles]
         self.signals = ScanWorkerSignals()
 
     def find_string(self, process, value):
@@ -29,53 +38,47 @@ class ScanWorker(QRunnable):
         return process.search_all_memory(buffer)
 
     def read_std_string(self, process, addr):
-        boundary = 16 + POINTER_SIZE
-        str_buffer = (ctypes.c_ubyte * boundary)()
+        str_buffer = (ctypes.c_ubyte * SIZEOF_STRING)()
         arr = process.read_memory(addr, str_buffer)
-        length = struct.unpack(POINTER, bytes(arr[16:boundary]))[0]
 
-        if length > 25000:
-            # This is suspiciously high
-            return None
+        for impl in STRING_IMPLEMENTATIONS:
+            length_offset, pointer_offset, short_length, use_flag = impl
+            length_a, length_b = length_offset
+            pointer_a, pointer_b = pointer_offset
 
-        if length < 16:
-            # Small string optimization
-            return bytes(arr[0:length])
+            if use_flag and arr[0] & 1 == 0:
+                # Small string optimization using LSB flag
+                short_length = arr[0] & 0xFE
+                yield bytes(arr[1:short_length])
+                continue
 
-        # Read for string from the heap
-        buffer = (ctypes.c_ubyte * length)()
-        target_addr = struct.unpack(POINTER, bytes(arr[0:POINTER_SIZE]))[0]
-        return bytes(process.read_memory(target_addr, buffer))
+            length = struct.unpack(POINTER, bytes(arr[length_a:length_b]))[0]
 
-    def is_multifile(self, process, address, offset):
-        # If we can find the multifile version 1.1 in the memory,
-        # then we most likely have stumbled upon a multifile entry.
-        mf_version = struct.pack('II', 1, 1)
-        buffer = (ctypes.c_ubyte * len(mf_version))()
-        version = bytes(process.read_memory(address + offset, buffer))
+            if length < short_length:
+                # Small string optimization
+                yield bytes(arr[0:length])
+                continue
 
-        return version == mf_version
+            if length > 1000:
+                # Suspiciously large
+                continue
+
+            # Read for string from the heap
+            buffer = (ctypes.c_ubyte * length)()
+            target_addr = struct.unpack(POINTER, bytes(arr[pointer_a:pointer_b]))[0]
+            yield bytes(process.read_memory(target_addr, buffer))
 
     def read_std_strings(self, process, addresses, offset):
-        values = []
-
         for address in addresses:
             if self.base.stop_event.is_set():
-                continue
+                break
 
             address += offset
 
-            if not self.is_multifile(process, address, VERSION_OFFSET):
-                continue
+            for value in self.read_std_string(process, address):
+                yield value
 
-            value = self.read_std_string(process, address)
-
-            if value:
-                values.append(value)
-
-        return values
-
-    def find_passwords(self, process, addr, value):
+    def find_passwords(self, process, addr, value, mf):
         # Step one: Peek 128 bytes behind the string and 128 bytes ahead in memory
         length = len(value)
         buffer_size = 256 + length
@@ -83,7 +86,11 @@ class ScanWorker(QRunnable):
         arr = bytes(process.read_memory(addr - 128, buffer))
 
         # Step two: Interpolate string until non-ASCII character found
-        index = arr.index(value.encode('utf-8'))
+        try:
+            index = arr.index(value.encode('utf-8'))
+        except:
+            return
+
         start_addr = None
 
         for i in range(index, 0, -1):
@@ -93,7 +100,7 @@ class ScanWorker(QRunnable):
 
         # Invalid string
         if start_addr is None:
-            return None, []
+            return
 
         value_addr = addr - 128 + start_addr
         end_addr = value_addr + length
@@ -115,36 +122,64 @@ class ScanWorker(QRunnable):
 
             if not filename_occurrences:
                 # There are no occurrences
-                return target, []
+                return
 
-        passwords = self.read_std_strings(process, filename_occurrences, FILENAME_OFFSET)
-        return target, passwords
+        yield target
 
-    def find_passwords_from_timestamp(self, process, timestamp):
-        # Find multifiles by timestamps easily
-        occurrences = process.search_all_memory(ctypes.c_uint64(timestamp))
-        return self.read_std_strings(process, occurrences, TIMESTAMP_OFFSET)
+        for offset in range(-MULTIFILE_STRUCT_SIZE, MULTIFILE_STRUCT_SIZE):
+            if self.base.stop_event.is_set():
+                break
+
+            for password in self.read_std_strings(process, filename_occurrences, offset):
+                if mf.is_password(password):
+                    yield password
 
     def search_memory(self):
         with Process.open_process(self.pid) as process:
-            for multifile_name in self.multifiles:
+            for i, multifile_name in enumerate(self.multifile_names):
                 if self.base.stop_event.is_set():
                     return
 
+                mf = Multifile()
+
+                with io.open(self.multifiles[i], 'rb', buffering=4096) as f:
+                    try:
+                        mf.load(f)
+                    except NotEncryptedException:
+                        self.signals.warning.emit(f'{multifile_name} is not an encrypted multifile.')
+                        continue
+                    except UnimplementedEncryptionException:
+                        self.signals.warning.emit(f'{multifile_name} contains an encryption algorithm that has not been implemented.')
+                        continue
+                    except StructDatagramException:
+                        self.signals.warning.emit(f'{multifile_name} is a malformed multifile.')
+                        continue
+
                 multifiles = self.find_string(process, multifile_name)
+
+                if not multifiles:
+                    continue
 
                 for multifile in multifiles:
                     if self.base.stop_event.is_set():
                         return
 
-                    target, passwords = self.find_passwords(process, multifile, multifile_name)
+                    passwords = self.find_passwords(process, multifile, multifile_name, mf)
+
+                    try:
+                        target = next(passwords)
+                    except StopIteration:
+                        # No passwords found
+                        continue
+
                     target = target.decode('utf-8', 'backslashreplace')
+                    target = target.replace('\\', '/')
 
                     for password in passwords:
                         if self.base.stop_event.is_set():
                             return
 
-                        self.signals.progress.emit(target, password.decode('utf-8', 'backslashreplace'))
+                        self.signals.progress.emit(target, password)
 
     def run(self):
         try:
